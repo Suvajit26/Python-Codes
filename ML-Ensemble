@@ -1,0 +1,159 @@
+#########   ENSEMBLE MODEL #########
+
+
+###  Import libraries:
+    
+import os
+import pandas as pd
+import numpy as np
+from sklearn.grid_search import GridSearchCV
+from sklearn import cross_validation, metrics, model_selection
+from __future__ import print_function
+from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import classification_report
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+from sklearn import metrics
+from sklearn.metrics import confusion_matrix
+from sklearn import cross_validation
+from sklearn.model_selection import KFold
+
+## Reading the csv
+
+Model_AD = pd.read_csv('AD.csv')
+
+# Creating copy 
+Train_test = Model_AD.copy()
+
+# Choosing X and Y columns
+
+Y = Train_test['Y_var']
+X = Train_test.loc[:,'X_var']
+
+## Dividing the data into train and test data frames
+X_test, X_train, y_test, y_train = train_test_split(X, Y, test_size=0.8, random_state=0)
+
+#Defining Test-size = 0.1 for creating test set
+#X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, random_state=1)
+
+#Defining Validation-size = 0.2 for creating Validation set
+#X_train, X_val, y_train, y_val = train_test_split(X, Y, test_size=0.2, random_state=1) 
+
+
+## Checking class ratio
+Class_Ratio = pd.crosstab(index = Model_AD['Y'], columns = "count")
+print(' Class ratio: ', Class_Ratio/Class_Ratio.sum())
+
+
+## AdaBoost 
+
+from sklearn import model_selection
+from sklearn.ensemble import VotingClassifier
+
+seed = 7
+num_trees = 100
+from sklearn.ensemble import AdaBoostClassifier
+ada_model = AdaBoostClassifier(n_estimators=num_trees, random_state=seed)
+ada_model.fit(X_train.fillna(0),y_train)
+
+ada_prob= ada_model.predict_proba(X_test.fillna(0))
+ada_prob[:,1]
+
+## Gradient Boosting Classifier
+
+from sklearn import model_selection
+from sklearn.ensemble import GradientBoostingClassifier
+
+GBC_model = GradientBoostingClassifier(learning_rate=0.05, 
+                        min_samples_split=20, 
+                        max_depth=10,
+                        n_estimators=100,
+                        max_features='sqrt',
+                        subsample=0.8,
+                        random_state=0)
+
+GBC_model.fit(X_train.fillna(0),y_train)
+
+GBC_prob= GBC_model.predict_proba(X_test.fillna(0))
+
+
+## XG Boost 
+
+import scipy.stats as scs
+import xgboost as xgb
+from xgboost.sklearn import XGBClassifier
+from sklearn import cross_validation, metrics
+from xgboost import XGBClassifier
+from sklearn.model_selection import cross_val_score
+
+XGB_model = XGBClassifier(base_score=0.5, booster='gbtree', colsample_bylevel=1,
+       colsample_bytree=1, gamma=0.5, learning_rate=0.1, max_delta_step=0,
+       max_depth=8, min_child_weight=1, missing=None, n_estimators=500,
+       n_jobs=1, nthread=None, objective='multi:softprob', num_class = 3, random_state=5,
+       reg_alpha=0, reg_lambda=0.5, scale_pos_weight=1, seed=None,
+       silent=True, subsample=1)
+
+XGB_model.fit(X_train.fillna(0), y_train)
+XGB_prob= XGB_model.predict_proba(X_test.fillna(0))
+
+## Ensemble Final Model
+
+final_model = VotingClassifier(estimators=[('ada', ada_model), ('gbc', GBC_model),('xgb', XGB_model)], voting='soft', weights=[1,2,3])
+final_model = final_model.fit(X_train.fillna(0),y_train)
+final_pred= final_model.predict(X_test.fillna(0))
+
+
+# Model Results
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+
+precision_score(y_test, final_pred, average=None)
+recall_score(y_test, final_pred, average=None)
+f1_score(y_test, final_pred, average=None)
+accuracy_score(y_test, final_pred, normalize = True)
+
+# Confusion Matrix
+
+from sklearn.metrics import confusion_matrix
+confusion_matrix(y_test, final_pred)
+
+## Cross - Validation
+
+#Simple K-Fold cross validation. 10 folds.
+cv = cross_validation.KFold(len(X.fillna(0)), n_folds=5)
+
+results = []
+# Cross validating and appending all the results
+pr = []
+rc = []
+fs = []
+ac = []
+
+for traincv, testcv in cv:
+        probas = final_model.fit(X.fillna(0).iloc[traincv,:],Y.iloc[traincv]).predict(X.fillna(0).iloc[testcv,:])
+        
+        
+        #results.append( rd_forest )
+        pr.append(precision_score(Y.iloc[testcv], probas, average="binary"))
+        rc.append(recall_score(Y.iloc[testcv], probas, average="binary"))
+        fs.append(f1_score(Y.iloc[testcv], probas, average="binary"))
+        ac.append(accuracy_score(Y.iloc[testcv], probas, normalize = True))
+
+        print(ac)
+        print(pr)
+        print(rc)
+        print(fs)
+        
+         
+## Variable importance for the randomforest
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+importances = rdforest.feature_importances_
+
+feats = {} # a dict to hold feature_name: feature_importance
+for feature, importance in zip(X_train.columns, rdforest.feature_importances_):
+    feats[feature] = importance #add the name/value pair
+    
+importances = pd.DataFrame.from_dict(feats, orient='index').rename(columns={0: 'Feature-Importance'}) 
